@@ -1,0 +1,16 @@
+hr {
+   size: 1px;
+}
+
+h2 {
+   font-size: 15px;
+}
+
+#answerButtons {
+   display: inline-flex;
+   flex-direction: column;
+}
+
+button {
+   margin-bottom: 10px;
+}
