@@ -84,39 +84,55 @@
          this.screen = new Screen();
          this.questions = [];
          this.numberOfCorrectAnswers = 0;
+         // 現在の出題番号
+         this.currentNumber = 0;
+         // 最終問題であるか確認するための変数
+         this.lastNumber = 0;
       }
 
       // クイズの取得
       getQuestions() {
-         return new Promise((resolve) => {
+         return new Promise((resolve, reject) => {
             const response = fetch('https://opentdb.com/api.php?amount=10');
             // クイズの取得に時間がかかる旨を表示する
             this.screen.printWaitingMessage();
             resolve(response);
-         });
+         }).then(response => {
+            if(response.ok) {
+               return response.json();
+            } else {
+               throw new Error('エラーが発生しました');
+            } 
+         }).then(data => {
+            this.questions = [...data.results]; 
+            // 最後の問題番号を配列番号と合わせるため、問題数から1引く
+            this.lastNumber = data.results.length - 1;
+
+            // 1問目のクイズの出題の準備をする
+            this.sendQuestionToScreen();
+         }).catch(error => {
+            console.log(error);
+         })
       }
 
-      // クイズを他のメソッドでも使用するため、自身が持つ配列に格納する
-      setQuestions(results) {
-         this.questions = [...results];
-      }
-
-      sendQuestionToScreen(number) {
+      sendQuestionToScreen() {
         // クイズの[カテゴリ]と[難易度]、問題文を取得する
-        const category = this.questions[number].category;
-        const difficulty = this.questions[number].difficulty;
-        const content = this.questions[number].question;
+        const category = this.questions[this.currentNumber].category;
+        const difficulty = this.questions[this.currentNumber].difficulty;
+        const content = this.questions[this.currentNumber].question;
 
         // 出題番号として使用するために引数の配列番号に1を足す
-        number++;
-
+        const number = this.currentNumber + 1;
         this.screen.printQuestion({number, category, difficulty, content});
+
+        // クイズの答えを作成する
+        this.sendAnswersToScreen();
       }
 
-      sendAnswersToScreen(number) {
+      sendAnswersToScreen() {
          // 表示する答えの並び順をランダムにするために、答えを配列に入れ直す
-         const answers = [...this.questions[number].incorrect_answers];
-         answers.push(this.questions[number].correct_answer);
+         const answers = [...this.questions[this.currentNumber].incorrect_answers];
+         answers.push(this.questions[this.currentNumber].correct_answer);
          
          // 乱数で作成した番号を持つ答えを、1つずつ取り出して表示する
          for(let i = answers.length; i >  0; i--) {
@@ -125,9 +141,26 @@
          }
       }
 
-      checkAnswer(userAnswer, number) {
+      checkAnswer(userAnswer) {
          // 答え合わせをして合っていたら正答数を1増やす
-         if(this.questions[number].correct_answer === userAnswer) this.numberOfCorrectAnswers++;
+         if(this.questions[this.currentNumber].correct_answer === userAnswer) {
+            this.numberOfCorrectAnswers++;
+         }
+         // 出題したクイズが最後のクイズだったか確認する
+         this.checkFinished();
+      }
+
+      checkFinished() {
+         // 現在の問題番号を1進める
+         this.currentNumber++;
+
+         // 最終問題が終わっていたら終了画面の処理に進む
+         if(this.currentNumber > this.lastNumber) {
+            this.sendNumberOfCorrectAnswers();
+         // 次の問題の処理へ進む
+         } else {
+            this.sendQuestionToScreen();
+         }
       }
 
       // クイズの終了時に表示するために正答数をスクリーンクラスに渡す
@@ -137,74 +170,23 @@
    }
 
    /*****************************************
-    *  クイズアプリの進行役を務めるクラス
+    *  ユーザーの入力を受け持つクラス
     ****************************************/
    class Facilitator {
       constructor() {
          this.questioner = new Questioner();
-         // 現在の出題番号
-         this.currentNumber = 0;
-         // 最終問題であるか確認するための変数
-         this.lastNumber = 0;
 
          // トップページの「開始」ボタンを押した時の処理
          document.getElementById('startButton').addEventListener('click', () => {
-            this.prepareQuestion();
+            // クイズの準備を開始する
+            this.questioner.getQuestions();
          });
 
          // クイズの答えのいずれかのボタンを押した時の処理
          document.getElementById('answerButtons').addEventListener('click', e => {
             // ユーザーの入力した値と、現在の問題番号を渡して正答か確認する
-            this.questioner.checkAnswer(e.target.value, this.currentNumber);
-
-            // ここまでの処理で1問のクイズが終了となるため、
-            // 次のクイズの処理へ進む前にクイズが最終問題であったか確認する
-            this.checkFinished();
+            this.questioner.checkAnswer(e.target.value);
          });
-      }
-
-      // クイズを開始するための準備を開始する
-      prepareQuestion() {
-         const response = this.questioner.getQuestions();
-         response
-            .then(response => {
-               if(response.ok) {
-                  return response.json();
-               } else {
-                  throw new Error('エラーが発生しました');
-               } 
-            })
-            .then(data => {
-               // 取得したクイズを出題者に渡す
-               this.questioner.setQuestions(data.results); 
-               // 最後の問題番号を配列番号と合わせるため、問題数から1引く
-               this.lastNumber = data.results.length - 1;
-
-               // ここまでの処理で出題の準備が完了したため、1問目のクイズ出題の処理に進む
-               this.sendQuestionNumber();
-            })
-            .catch(error => {
-               console.log(error);
-            })
-      }
-
-      // 現在の問題番号を渡してクイズと答えを作成する
-      sendQuestionNumber() {
-         this.questioner.sendQuestionToScreen(this.currentNumber);
-         this.questioner.sendAnswersToScreen(this.currentNumber);
-      }
-
-      checkFinished() {
-         // 現在の問題番号を1進める
-         this.currentNumber++;
-
-         // 最終問題が終わっていたら終了画面の処理に進む
-         if(this.currentNumber > this.lastNumber) {
-            this.questioner.sendNumberOfCorrectAnswers();
-         // 次の問題の処理へ進む
-         } else {
-            this.sendQuestionNumber();
-         }
       }
    }
 
